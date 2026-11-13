@@ -1,0 +1,31 @@
+{
+  "name": "galaxy-collapse",
+  "version": "0.1.0",
+  "description": "Bilibili dynamics/articles to GameKee wiki editor pipeline with queue, drafts, review and web UI",
+  "type": "module",
+  "main": "src/server.js",
+  "scripts": {
+    "start": "node src/server.js",
+    "dev": "node --watch src/server.js",
+    "test": "node --test test/*.test.js",
+    "probe:article": "node tools/probe.mjs article",
+    "probe:dynamic": "node tools/probe.mjs dynamic"
+  },
+  "engines": {
+    "node": ">=20.0.0"
+  },
+  "dependencies": {
+    "better-sqlite3": "^11.8.1",
+    "express": "^4.21.2"
+  },
+  "private": true,
+  "license": "UNLICENSED",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/umeabc/galaxy-collapse.git"
+  },
+  "homepage": "https://github.com/umeabc/galaxy-collapse#readme",
+  "bugs": {
+    "url": "https://github.com/umeabc/galaxy-collapse/issues"
+  }
+}
