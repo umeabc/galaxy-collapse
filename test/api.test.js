@@ -113,6 +113,12 @@ test('API：订阅的增删改查', async () => {
     assert.equal(duplicate.status, 409);
     assert.equal(duplicate.body.error.code, 'SUBSCRIPTION_EXISTS');
 
+    const announcements = await json(await fetch(`${base}/api/announcements`));
+    assert.equal(announcements.status, 200);
+    assert.equal(announcements.body.sources.length, 3);
+    assert.ok(announcements.body.schedule);
+    assert.equal(announcements.body.schedule.autoSync, true);
+
     const list = await json(await fetch(`${base}/api/subscriptions`));
     assert.equal(list.body.items.length, 1);
 

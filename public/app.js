@@ -508,12 +508,28 @@ function field({ key, label, type = 'text', help = '', placeholder = '', value, 
   return `<div class="field"><label for="${id}">${esc(label)}</label>${control}${help ? `<span class="help">${esc(help)}</span>` : ''}</div>`;
 }
 
+function formatInterval(seconds) {
+  const value = Number(seconds) || 0;
+  if (value % 3600 === 0) return `${value / 3600} 小时`;
+  if (value % 60 === 0) return `${value / 60} 分钟`;
+  return `${value} 秒`;
+}
+
 async function renderAnnouncements() {
   const data = await api('/api/announcements');
-  $('#view').innerHTML = `<div class="page-head"><div><h1>公告</h1><p>按设置时区同步今天及以后的官方公告，日服与国际服使用 AI 翻译。</p></div>
+  const schedule = data.schedule || {};
+  const nextText = schedule.autoSync
+    ? (schedule.nextSyncAt && schedule.nextSyncAt > Date.now() ? fmtTime(schedule.nextSyncAt) : '等待抓取')
+    : '—';
+  const scheduleText = schedule.autoSync
+    ? `定时抓取已开启 · 每 ${formatInterval(schedule.intervalSeconds)} · 下次 ${nextText}`
+    : '定时抓取已关闭（可在设置中开启）';
+  $('#view').innerHTML = `<div class="page-head"><div><h1>公告</h1><p>按设置时区同步今天及以后的官方公告，日服与国际服使用 AI 翻译。</p><div class="meta">${esc(scheduleText)}${schedule.running ? ' · 正在抓取…' : ''}</div></div>
     <div class="toolbar"><button class="btn primary" data-action="announcement-sync-all">同步全部公告源</button></div></div>
     <div class="grid">${data.sources.map(source => `<div class="card"><header><h2>${esc(source.label)}</h2>${badge(source.enabled ? '已启用' : '已暂停')}</header><div class="body">
-      <p>上次同步：${esc(fmtTime(source.lastSyncAt))}</p><p class="muted">${esc(source.lastError || '无错误')}</p>
+      <p>上次同步：${esc(fmtTime(source.lastSyncAt))}</p>
+      <p>下次抓取：${esc(source.nextSyncAt ? fmtTime(source.nextSyncAt) : '—')}</p>
+      <p class="muted">上次新增：${Number(source.lastCount) || 0} 条${source.lastError ? ` · ${esc(source.lastError)}` : ' · 无错误'}</p>
       <button class="btn" data-action="announcement-toggle" data-key="${esc(source.key)}" data-enabled="${!source.enabled}">${source.enabled ? '暂停' : '启用'}</button>
       <button class="btn primary" data-action="announcement-sync" data-key="${esc(source.key)}" ${source.enabled ? '' : 'disabled'}>立即同步</button>
     </div></div>`).join('')}</div>
@@ -665,6 +681,7 @@ function renderSettings() {
       </div>
 
       <div class="card"><header><h2>公告</h2><button class="btn" type="button" data-action="test-target" data-target="proxy">测试代理</button></header><div class="body"><div class="grid">
+        ${field({ key: 'announcementAutoSync', label: '定时抓取公告', type: 'checkbox', value: v.announcementAutoSync })}
         ${field({ key: 'announcementProxy', label: '公告代理', value: v.announcementProxy, help: 'HTTP(S) 代理；国际服必填，保存后测试' })}
         ${field({ key: 'announcementSyncIntervalSeconds', label: '同步间隔（秒）', type: 'number', value: v.announcementSyncIntervalSeconds, min: 60, max: 86400 })}
         ${field({ key: 'announcementTranslate', label: 'AI 翻译（日服/国际服必需）', type: 'checkbox', value: v.announcementTranslate })}
@@ -1197,7 +1214,7 @@ window.addEventListener('hashchange', () => {
 
 setInterval(() => {
   if (document.hidden) return;
-  if (!['queue', 'drafts'].includes(state.route)) return;
+  if (!['queue', 'drafts', 'announcements'].includes(state.route)) return;
   if (!$('#modal').classList.contains('hidden')) return;
   const active = document.activeElement;
   if (active && ['INPUT', 'TEXTAREA', 'SELECT'].includes(active.tagName)) return;

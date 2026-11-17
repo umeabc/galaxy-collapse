@@ -104,7 +104,13 @@ export function createApp({ config: cfg = config, startWorker = true } = {}) {
   if (startWorker) {
     services.queue.start();
     announcementScheduler = setInterval(() => {
-      services.announcements.syncNow({ reason: 'scheduler', dueOnly: true }).catch(() => {});
+      try {
+        const snapshot = services.settings.getSnapshot();
+        if (!snapshot.announcementAutoSync || services.announcements.running) return;
+        services.announcements.syncNow({ reason: 'scheduler', dueOnly: true }).catch(() => {});
+      } catch {
+        // 定时器永不抛出
+      }
     }, 30000);
     announcementScheduler.unref?.();
     scheduler = setInterval(() => {

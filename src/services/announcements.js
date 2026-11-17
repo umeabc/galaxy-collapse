@@ -27,6 +27,30 @@ export class AnnouncementService {
     this.lastRunAt = 0;
   }
 
+  /** 调度视图：下次抓取时间、间隔、是否开启定时抓取。 */
+  getSchedule() {
+    const snapshot = this.settings.getSnapshot();
+    const intervalSeconds = Math.max(60, Number(snapshot.announcementSyncIntervalSeconds) || 900);
+    const now = Date.now();
+    const sources = this.store.listAnnouncementSources().map(source => ({
+      ...source,
+      nextSyncAt: source.enabled
+        ? (source.last_sync_at ? source.last_sync_at + intervalSeconds * 1000 : now)
+        : null,
+    }));
+    const nextSyncAt = sources.reduce((min, source) => {
+      if (!source.nextSyncAt) return min;
+      return min === null ? source.nextSyncAt : Math.min(min, source.nextSyncAt);
+    }, null);
+    return {
+      autoSync: Boolean(snapshot.announcementAutoSync),
+      intervalSeconds,
+      running: this.running,
+      lastRunAt: this.lastRunAt,
+      nextSyncAt,
+    };
+  }
+
   async syncNow({ source = null, reason = 'manual', dueOnly = false } = {}) {
     if (this.running) return { skipped: true, reason: 'already_running', created: [], errors: [], sources: [] };
     this.running = true;

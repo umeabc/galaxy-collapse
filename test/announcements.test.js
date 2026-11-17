@@ -278,3 +278,15 @@ test('公告 API：列表、源开关校验、同步、代理测试与凭证不�
   assert.equal(preview.status, 200);
   assert.equal((await request('/settings', 'PATCH', { announcementProxy: 'socks5://localhost' })).status, 400);
 });
+
+test('公告调度：间隔、下次抓取与自动抓取开关', t => {
+  const s = makeServices({ settings: { announcementSyncIntervalSeconds: 600, announcementAutoSync: false } });
+  t.after(() => s.db.close());
+  s.store.updateAnnouncementSource('jp', { lastSyncAt: 1_700_000_000_000 });
+  const schedule = s.announcements.getSchedule();
+  assert.equal(schedule.autoSync, false);
+  assert.equal(schedule.intervalSeconds, 600);
+  assert.equal(schedule.nextSyncAt, 1_700_000_000_000 + 600_000);
+  const jp = s.store.listAnnouncementSources().find(item => item.key === 'jp');
+  assert.equal(jp.enabled, true);
+});

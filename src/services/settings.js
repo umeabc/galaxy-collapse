@@ -53,6 +53,7 @@ export const SETTING_SPEC = {
   aiOnError: { type: 'enum', values: AI_ERROR_ACTIONS },
   // 公告
   announcementProxy: { type: 'string', max: 500 },
+  announcementAutoSync: bool,
   announcementSyncIntervalSeconds: int(60, 86400),
   announcementTranslate: bool,
   announcementAutoApprove: bool,
@@ -103,6 +104,7 @@ export function defaultSettings(config) {
     aiMinConfidence: config.ai.minConfidence,
     aiOnError: 'review',
     announcementProxy: config.announcementProxy || '',
+    announcementAutoSync: true,
     announcementSyncIntervalSeconds: 900,
     announcementTranslate: true,
     announcementAutoApprove: true,

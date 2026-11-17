@@ -87,7 +87,16 @@ export function createApiRouter({ store, settings, log, review, publish, queue, 
 
   router.get('/health', (req, res) => res.json({ status: 'ok', time: Date.now() }));
 
-  router.get('/announcements', (req, res) => res.json({ sources: store.listAnnouncementSources(), recent: store.listAnnouncementDrafts() }));
+  router.get('/announcements', (req, res) => {
+    const schedule = announcements.getSchedule();
+    const sources = store.listAnnouncementSources().map(source => ({
+      ...source,
+      nextSyncAt: source.enabled && schedule.autoSync
+        ? (source.last_sync_at ? source.last_sync_at + schedule.intervalSeconds * 1000 : schedule.nextSyncAt || Date.now())
+        : null,
+    }));
+    res.json({ sources, schedule, recent: store.listAnnouncementDrafts() });
+  });
   router.post('/announcements/sync', wrap(async (req, res) => {
     res.json(await announcements.syncNow({ source: req.body?.source || null }));
   }));
