@@ -57,6 +57,7 @@ export function loadConfig(env = process.env, root = PROJECT_ROOT) {
     dbPath: resolve(root, env.DB_PATH || resolve(dataDir, 'galaxy.sqlite')),
     mediaDir: resolve(root, env.MEDIA_DIR || resolve(dataDir, 'media')),
     publishTimeoutMs: Math.max(5000, toInt(env.PUBLISH_TIMEOUT_MS, 20000)),
+    announcementProxy: String(env.ANNOUNCEMENT_PROXY || '').trim(),
     maxTitleLength: Math.min(200, Math.max(10, toInt(env.MAX_TITLE_LENGTH, 100))),
     bili: {
       mid: String(env.BILI_USER_MID || '').trim(),

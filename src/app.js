@@ -1,4 +1,5 @@
 import express from 'express';
+import { AnnouncementService } from './services/announcements.js';
 import { join } from 'node:path';
 import { openDatabase } from './db.js';
 import { createLogStore } from './log.js';
@@ -25,8 +26,9 @@ export function buildServices({ config: cfg = config } = {}) {
     if (settings.getSnapshot().autoPublish) queue.enqueue(draftId);
   };
   const sync = new SyncService({ store, settings, review, log, biliFactory, config: cfg });
+  const announcements = new AnnouncementService({ store, settings, log, queue });
   migrateLegacySubscription({ store, settings, log });
-  return { db, log, store, settings, review, publish, queue, sync, biliFactory };
+  return { db, log, store, settings, review, publish, queue, sync, announcements, biliFactory };
 }
 
 export function createApp({ config: cfg = config, startWorker = true } = {}) {
@@ -97,9 +99,14 @@ export function createApp({ config: cfg = config, startWorker = true } = {}) {
     });
   });
 
+  let announcementScheduler = null;
   let scheduler = null;
   if (startWorker) {
     services.queue.start();
+    announcementScheduler = setInterval(() => {
+      services.announcements.syncNow({ reason: 'scheduler', dueOnly: true }).catch(() => {});
+    }, 30000);
+    announcementScheduler.unref?.();
     scheduler = setInterval(() => {
       try {
         const snapshot = services.settings.getSnapshot();
@@ -121,6 +128,7 @@ export function createApp({ config: cfg = config, startWorker = true } = {}) {
 
   function close() {
     services.queue.stop();
+    if (announcementScheduler) clearInterval(announcementScheduler);
     if (scheduler) clearInterval(scheduler);
     scheduler = null;
     try {

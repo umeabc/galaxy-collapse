@@ -1,14 +1,15 @@
-import { createHmac } from 'node:crypto';
+import { createHmac, createHash } from 'node:crypto';
 import { randomKey } from '../util.js';
 import { CookieJar } from '../cookies.js';
 
-const CDN_BASE = 'https://cdnimg-v2.gamekee.com';
+const CDN_BASE = 'https://cdnimg02.gamekee.com';
 const MIME = { jpg: 'image/jpeg', jpeg: 'image/jpeg', png: 'image/png', gif: 'image/gif', webp: 'image/webp' };
 
 /** 图片尺寸解析（JPEG/PNG/GIF/WebP），上传前无需再依赖上游元数据。 */
 export function parseImageSize(buffer) {
   if (!Buffer.isBuffer(buffer) || buffer.length < 12) return null;
   if (buffer[0] === 0x89 && buffer[1] === 0x50 && buffer[2] === 0x4e && buffer[3] === 0x47) {
+    if (buffer.length < 24) return null;
     return { width: buffer.readUInt32BE(16), height: buffer.readUInt32BE(20), format: 'png' };
   }
   if (buffer.toString('ascii', 0, 4) === 'GIF8') {
@@ -100,10 +101,48 @@ export function publicUrl(key) {
   return `${CDN_BASE}/${String(key).replace(/^\/+/, '')}`;
 }
 
+export function signCosV5({ method = 'PUT', key, headers, credentials, now = new Date() }) {
+  const encode = value => encodeURIComponent(value).replace(/[!'()*]/g, ch => `%${ch.charCodeAt(0).toString(16).toUpperCase()}`);
+  const normalized = Object.fromEntries(Object.entries(headers).map(([name, value]) => [name.toLowerCase(), String(value).trim()]));
+  const names = Object.keys(normalized).sort();
+  const headerString = names.map(name => `${encode(name)}=${encode(normalized[name])}`).join('&');
+  const start = Math.floor(now.getTime() / 1000) - 60;
+  const keyTime = `${start};${start + 600}`;
+  const httpString = `${method.toLowerCase()}\n/${String(key).replace(/^\/+/, '')}\n\n${headerString}\n`;
+  const signKey = createHmac('sha1', credentials.secret_access_key).update(keyTime).digest('hex');
+  const stringToSign = `sha1\n${keyTime}\n${createHash('sha1').update(httpString).digest('hex')}\n`;
+  const signature = createHmac('sha1', signKey).update(stringToSign).digest('hex');
+  return `q-sign-algorithm=sha1&q-ak=${encode(credentials.access_key_id)}&q-sign-time=${keyTime}&q-key-time=${keyTime}&q-header-list=${names.join(';')}&q-url-param-list=&q-signature=${signature}`;
+}
+
+export class CosUploader {
+  constructor({ credentials, fetchImpl = globalThis.fetch, timeoutMs = 20000 }) {
+    this.credentials = credentials;
+    this.fetchImpl = fetchImpl;
+    this.timeoutMs = timeoutMs;
+  }
+
+  async upload(buffer, { uid, ext, width, height, now = new Date() }) {
+    const c = this.credentials;
+    if (!c.access_key_id || !c.secret_access_key || !c.security_token || !c.bucket_name || !c.region || !c.path?.image) throw new Error('COS credentials incomplete');
+    const key = buildObjectKey({ basePath: c.path.image, uid, ext, width, height, now }).replace(/^\/+/, '');
+    const host = c.bucket_end_point ? normalizeObsServer(c.bucket_end_point) : `${c.bucket_name}.cos.${c.region}.myqcloud.com`;
+    const headers = { host, 'content-type': MIME[ext] || 'application/octet-stream', 'x-cos-security-token': c.security_token };
+    const authorization = signCosV5({ key, headers, credentials: c, now });
+    let response;
+    try {
+      response = await this.fetchImpl(`https://${host}/${key}`, { method: 'PUT', headers: { ...headers, Authorization: authorization }, body: buffer, signal: AbortSignal.timeout(this.timeoutMs) });
+    } catch { throw new Error('COS upload network error'); }
+    if (!response.ok) throw new Error(`COS upload failed: HTTP ${response.status}`);
+    return { key, url: `https://cdnimg-v2.gamekee.com/${key}`, width, height, bytes: buffer.length };
+  }
+}
+
 /** 编辑器节点用协议相对地址（与站点真实数据一致）。 */
 export function editorCdnUrl(keyOrUrl) {
   const value = String(keyOrUrl || '');
   if (value.startsWith('//')) return value;
+  if (/^https?:\/\/cdnimg02\.gamekee\.com\//.test(value)) return value.replace(/^https?:/, '');
   if (value.startsWith('https://cdnimg-v2.gamekee.com/')) return value.replace('https:', '');
   if (value.startsWith('http://cdnimg-v2.gamekee.com/')) return value.replace('http:', '');
   return `//${value.replace(/^\/+/, '')}`;
@@ -134,7 +173,7 @@ export class ObsUploader {
     if (this.override) return this.override;
     if (this.cache) return this.cache;
     let raw = null;
-    if (this.cookieStore) raw = this.cookieStore.getObsCredentials();
+    if (this.cookieStore) raw = this.cookieStore.obsCredentials?.() || this.cookieStore.getObsCredentials?.();
     else if (this.cookieFile) {
       raw = new CookieJar(this.cookieFile).reload().obsCredentials();
     }

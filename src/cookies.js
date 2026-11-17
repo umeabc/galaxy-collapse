@@ -163,7 +163,7 @@ function sessionFrom(cookies, { domain = 'www.gamekee.com', error = null, source
     try {
       const payload = JSON.parse(Buffer.from(token.split('.')[1], 'base64url').toString('utf8'));
       result.expiresAt = payload.exp ?? null;
-      result.valid = Boolean(payload.exp && payload.exp * 1000 > Date.now()) && Boolean(uid) && Boolean(obs);
+      result.valid = Boolean(payload.exp && payload.exp * 1000 > Date.now()) && Boolean(uid);
       if (payload.exp && payload.exp * 1000 <= Date.now()) result.error = 'TOKEN_EXPIRED';
     } catch {
       result.error = 'TOKEN_UNPARSABLE';

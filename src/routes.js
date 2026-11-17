@@ -6,6 +6,8 @@ import { paragraphsToBlocks } from './bili/page.js';
 import { materializeDraft } from './services/sync.js';
 import { imagesFromMarkdown, markdownToBlocks, summaryFromMarkdown } from './convert/markdown.js';
 import { reviewWithAi } from './review/ai.js';
+import { fetchWithProxy } from './net/proxy.js';
+import { fetchGlobalAnnouncements } from './announcements/sources.js';
 
 const wrap = handler => (req, res, next) => Promise.resolve(handler(req, res, next)).catch(next);
 
@@ -80,10 +82,20 @@ export async function fetchManualSource({ input, kind = 'auto', bili }) {
   };
 }
 
-export function createApiRouter({ store, settings, log, review, publish, queue, sync, config }) {
+export function createApiRouter({ store, settings, log, review, publish, queue, sync, announcements, config }) {
   const router = express.Router();
 
   router.get('/health', (req, res) => res.json({ status: 'ok', time: Date.now() }));
+
+  router.get('/announcements', (req, res) => res.json({ sources: store.listAnnouncementSources(), recent: store.listAnnouncementDrafts() }));
+  router.post('/announcements/sync', wrap(async (req, res) => {
+    res.json(await announcements.syncNow({ source: req.body?.source || null }));
+  }));
+  router.patch('/announcements/sources/:key', wrap(async (req, res) => {
+    if (!store.getAnnouncementSource(req.params.key)) throw new AppError('公告源不存在', { code: 'ANNOUNCEMENT_SOURCE_NOT_FOUND', status: 404 });
+    if (typeof req.body?.enabled !== 'boolean') throw new AppError('enabled 必须是布尔值', { code: 'INVALID_INPUT', status: 400 });
+    res.json({ source: store.updateAnnouncementSource(req.params.key, { enabled: req.body.enabled }) });
+  }));
 
   // 预览图片代理：B 站图片有防盗链，浏览器直连带 localhost Referer 会 403。
   // 仅允许白名单域，避免把本服务变成任意 URL 代理（SSRF）。
@@ -95,28 +107,29 @@ export function createApiRouter({ store, settings, log, review, publish, queue, 
       throw new AppError('图片地址不合法', { code: 'INVALID_INPUT', status: 400 });
     }
     const host = target.hostname.toLowerCase();
-    const allowed = ['hdslb.com', 'bilibili.com', 'gamekee.com'].some(domain => host === domain || host.endsWith(`.${domain}`));
+    const announcementImage = store.listAnnouncementDrafts({ limit: 200 }).some(draft => imagesFromMarkdown(draft.markdown).includes(target.href));
+    const allowed = announcementImage || ['hdslb.com', 'bilibili.com', 'gamekee.com'].some(domain => host === domain || host.endsWith(`.${domain}`));
     if (!/^https?:$/.test(target.protocol) || !allowed) {
       throw new AppError('不允许代理该域名的图片', { code: 'IMAGE_HOST_NOT_ALLOWED', status: 403 });
     }
     let upstream;
     try {
-      upstream = await fetch(target, {
+      upstream = await fetchWithProxy(target, {
         headers: {
           'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36',
-          Referer: 'https://www.bilibili.com/',
+          Referer: host.endsWith('.gamekee.com') ? 'https://www.gamekee.com/' : announcementImage ? target.origin : 'https://www.bilibili.com/',
           Accept: 'image/avif,image/webp,image/apng,image/*,*/*;q=0.8',
         },
-        redirect: 'follow',
+        redirect: 'error',
         signal: AbortSignal.timeout(20000),
-      });
+      }, announcementImage ? settings.getSnapshot().announcementProxy : '', publish.fetchImpl);
     } catch {
       throw new AppError('图片代理请求失败', { code: 'IMAGE_PROXY_FAILED', status: 502 });
     }
     // 跟随重定向后再次校验最终域名，避免被白名单站点重定向到内网。
     try {
       const finalHost = new URL(upstream.url || target).hostname.toLowerCase();
-      const finalAllowed = ['hdslb.com', 'bilibili.com', 'gamekee.com'].some(domain => finalHost === domain || finalHost.endsWith(`.${domain}`));
+      const finalAllowed = (announcementImage && finalHost === host) || ['hdslb.com', 'bilibili.com', 'gamekee.com'].some(domain => finalHost === domain || finalHost.endsWith(`.${domain}`));
       if (!finalAllowed) throw new Error('redirect host not allowed');
     } catch {
       throw new AppError('图片重定向到不允许的域名', { code: 'IMAGE_HOST_NOT_ALLOWED', status: 403 });
@@ -197,6 +210,15 @@ export function createApiRouter({ store, settings, log, review, publish, queue, 
   router.post('/settings/test', wrap(async (req, res) => {
     const target = String(req.body?.target ?? '').trim();
     const snapshot = settings.getSnapshot();
+    if (target === 'proxy') {
+      const started = Date.now();
+      try {
+        await fetchGlobalAnnouncements({ proxy: snapshot.announcementProxy, fetchImpl: announcements.fetchImpl, todayKey: '9999-12-31', maxPages: 1 });
+        return res.json({ ok: true, status: 200, elapsedMs: Date.now() - started, message: `代理可用，国际服 HTTP 200，耗时 ${Date.now() - started}ms` });
+      } catch (error) {
+        return res.json({ ok: false, status: error.details?.httpStatus ?? null, elapsedMs: Date.now() - started, code: error.code || 'PROXY_FAILED', message: error.code === 'ANNOUNCEMENT_PROXY_REQUIRED' ? '国际服必须在设置中配置公告代理' : '代理测试失败，请检查代理出口或源站状态' });
+      }
+    }
     if (target === 'gamekee') {
       try {
         const client = gamekeeClient(snapshot, config);

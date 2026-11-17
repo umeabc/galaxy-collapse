@@ -37,8 +37,8 @@ test('图片尺寸：PNG/JPEG 文件头', () => {
 test('OBS key / CDN / 签名格式', () => {
   const key = buildObjectKey({ basePath: 'wiki2.0/pro/829/images', uid: '399789', ext: 'jpg', width: 800, height: 600, now: new Date('2026-11-12T00:00:00Z') });
   assert.match(key, /^wiki2\.0\/pro\/829\/images\/w_800\/h_600\/399789\/2026\/11\/12\/[a-z0-9]{10}\.jpg$/);
-  assert.equal(publicUrl(key), `https://cdnimg-v2.gamekee.com/${key}`);
-  assert.equal(editorCdnUrl(`https://cdnimg-v2.gamekee.com/${key}`), `//cdnimg-v2.gamekee.com/${key}`);
+  assert.equal(publicUrl(key), `https://cdnimg02.gamekee.com/${key}`);
+  assert.equal(editorCdnUrl(`https://cdnimg02.gamekee.com/${key}`), `//cdnimg02.gamekee.com/${key}`);
   const { authorization } = signObsV2({
     method: 'PUT',
     bucket: 'wiki-obs',

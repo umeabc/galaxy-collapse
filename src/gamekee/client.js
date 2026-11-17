@@ -179,6 +179,43 @@ export class GamekeeClient {
     return this._request('POST', '/v1/protected/content/delete', { body: { id: Number(id) } });
   }
 
+  /**
+   * 上传凭证：优先 cookie 里的华为云 OBS 临时凭证；否则调用站点接口获取 COS 临时凭证。
+   * 返回统一结构 { provider: 'obs'|'cos', access_key_id, secret_access_key, security_token, ... }。
+   */
+  async getUploadCredentials({ force = false } = {}) {
+    const obs = this.cookieStore.obsCredentials?.();
+    if (obs?.access_key_id && obs?.security_token) {
+      return { provider: 'obs', ...obs };
+    }
+    if (!force && this._uploadCredentials && this._uploadCredentials.expiresAt > Date.now() + 60000) {
+      return this._uploadCredentials.value;
+    }
+    const response = await this._request('GET', '/v1/public/getObsCredential');
+    const data = response?.data ?? {};
+    if (!data.access || !data.secret) throw new GamekeeError('GameKee 未返回上传凭证', { code: 'UPLOAD_CREDENTIAL_FAILED' });
+    const value = {
+      provider: String(data.provider || 'cos').toLowerCase(),
+      access_key_id: data.access,
+      secret_access_key: data.secret,
+      security_token: data.security_token,
+      bucket_name: data.bucket_name,
+      region: data.region,
+      end_point: data.end_point,
+      bucket_end_point: data.bucket_end_point,
+      path: data.path || {},
+      cdn_host: data.cdn_host || '',
+      expiresAt: Date.now() + (Number(data.expires_at) || 3600) * 1000,
+    };
+    this._uploadCredentials = { expiresAt: value.expiresAt, value };
+    return value;
+  }
+
+  /** 兼容旧调用：直接取上传凭证原始数据。 */
+  async getObsCredential() {
+    return this.getUploadCredentials();
+  }
+
   /** 登录态探针：protected 接口返回 0 即 cookie 有效。 */
   async myInfo() {
     const response = await this._request('GET', '/v1/protected/user/myInfo');

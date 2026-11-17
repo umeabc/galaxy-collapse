@@ -1,8 +1,9 @@
+import { fetchWithProxy } from '../net/proxy.js';
 import { AppError, mapLimit, truncate } from '../util.js';
 import { imagesFromMarkdown } from '../convert/markdown.js';
 import { buildHtml, buildSlate } from '../convert/slate.js';
 import { buildArticlePayload, GamekeeClient } from '../gamekee/client.js';
-import { editorCdnUrl, ObsUploader, parseImageSize } from '../gamekee/obs.js';
+import { editorCdnUrl, CosUploader, ObsUploader, parseImageSize } from '../gamekee/obs.js';
 import { checkSchedule } from './schedule.js';
 
 const MAX_IMAGE_BYTES = 30 * 1024 * 1024;
@@ -12,7 +13,11 @@ const UA = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML,
 function refererFor(url) {
   try {
     const host = new URL(url).hostname;
+    if (host === 'gamekee.com' || host.endsWith('.gamekee.com')) return 'https://www.gamekee.com/';
     if (host.endsWith('hdslb.com') || host.endsWith('bilibili.com')) return 'https://www.bilibili.com/';
+    if (host.endsWith('bluearchive.jp') || host.endsWith('yo-star.com')) return 'https://bluearchive.jp/';
+    if (host.endsWith('bluearchive-cn.com') || host.endsWith('yostar.net')) return 'https://bluearchive-cn.com/';
+    if (host.endsWith('nexon.com') || host.endsWith('cloudfront.net')) return 'https://forum.nexon.com/';
   } catch {
     return null;
   }
@@ -37,10 +42,10 @@ export class PublishService {
     }));
   }
 
-  async downloadImage(url) {
+  async downloadImage(url, proxy = '') {
     let response;
     try {
-      response = await this.fetchImpl(url, {
+      response = await fetchWithProxy(url, {
         headers: {
           'User-Agent': UA,
           Accept: 'image/avif,image/webp,image/apng,image/*,*/*;q=0.8',
@@ -48,7 +53,7 @@ export class PublishService {
         },
         redirect: 'follow',
         signal: AbortSignal.timeout(this.config.publishTimeoutMs),
-      });
+      }, proxy, this.fetchImpl);
     } catch {
       throw new AppError(`图片下载失败（网络）：${truncate(url, 120)}`, { code: 'IMAGE_DOWNLOAD_FAILED', status: 502 });
     }
@@ -71,7 +76,7 @@ export class PublishService {
   }
 
   /** @returns {Promise<Map<string,{cdnUrl:string,width:number,height:number}>>} */
-  async ensureMedia(urls, gamekee) {
+  async ensureMedia(urls, gamekee, proxy = '') {
     const map = new Map();
     if (!urls.length) return map;
     if (urls.length > MAX_IMAGES) {
@@ -80,16 +85,18 @@ export class PublishService {
     const uid = gamekee.cookieStore.get('www.gamekee.com', 'userUid');
     if (!uid) throw new AppError('GameKee cookie 缺少 userUid', { code: 'AUTH_REQUIRED', status: 401 });
 
-    const uploader = new ObsUploader({
+    const credentials = gamekee.cookieStore.getObsCredentials?.() ? null : await gamekee.getUploadCredentials();
+    const uploader = credentials?.provider === 'cos' ? new CosUploader({ credentials, fetchImpl: this.fetchImpl, timeoutMs: this.config.publishTimeoutMs }) : new ObsUploader({
       cookieStore: gamekee.cookieStore,
       timeoutMs: this.config.publishTimeoutMs,
       fetchImpl: this.fetchImpl,
     });
+    if (credentials?.provider === 'obs') uploader.override = credentials;
 
     const resolved = await mapLimit(urls, 2, async url => {
       const cached = this.store.getMedia(url);
       if (cached) return { url, cdnUrl: editorCdnUrl(cached.cdn_url), width: cached.width, height: cached.height, cached: true };
-      const buffer = await this.downloadImage(url);
+      const buffer = await this.downloadImage(url, proxy);
       const size = parseImageSize(buffer);
       if (!size) throw new AppError('无法识别图片格式/尺寸', { code: 'IMAGE_UNSUPPORTED', status: 415 });
       const ext = size.format === 'jpeg' ? 'jpg' : size.format;
@@ -107,7 +114,7 @@ export class PublishService {
     const map = new Map();
     for (const url of urls) {
       const cached = this.store.getMedia(url);
-      if (cached) map.set(url, { cdnUrl: cached.cdn_url, width: cached.width, height: cached.height });
+      if (cached) map.set(url, { cdnUrl: `/api/proxy/image?url=${encodeURIComponent(cached.cdn_url.startsWith('//') ? `https:${cached.cdn_url}` : cached.cdn_url)}`, width: cached.width, height: cached.height });
       else map.set(url, { cdnUrl: `/api/proxy/image?url=${encodeURIComponent(url)}`, width: 800, height: 600 });
     }
     return map;
@@ -115,7 +122,7 @@ export class PublishService {
 
   async buildContent(draft, gamekee) {
     const urls = imagesFromMarkdown(draft.markdown);
-    const imageMap = await this.ensureMedia(urls, gamekee);
+    const imageMap = await this.ensureMedia(urls, gamekee, Number(draft.type) === 2 ? this.settings.getSnapshot().announcementProxy : '');
     const slate = buildSlate(draft.markdown, { imageMap });
     if (slate.missingImages.length) {
       throw new AppError('部分图片无法转换到 GameKee CDN', {
@@ -155,8 +162,8 @@ export class PublishService {
 
     const gamekee = this.gamekeeFactory(snapshot);
     const status = gamekee.cookieStatus();
-    if (!status.hasUserToken || !status.hasObsParams) {
-      throw new AppError('GameKee 登录 cookie 缺失或失效（需要 userToken / userUid / obs_client_params）', {
+    if (!status.hasUserToken || !gamekee.cookieStore.get('www.gamekee.com', 'userUid')) {
+      throw new AppError('GameKee 登录 cookie 缺失或失效（需要 userToken / userUid）', {
         code: 'AUTH_REQUIRED',
         status: 401,
         details: { hasUserToken: status.hasUserToken, hasObsParams: status.hasObsParams, error: status.error },

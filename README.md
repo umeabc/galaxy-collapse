@@ -67,6 +67,19 @@ POST /api/publications/:publicationId/update
 更新 `publications.last_pushed_at`。UI 在「已发布」草稿上有对应按钮。
 另有只读接口 `GET /api/gamekee/articles/:id` 用于核对远端状态。
 
+## 三服公告自动发帖
+
+除 B 站订阅外，内置碧蓝档案 **日服 / 国际服 / 国服** 公告源：
+
+- 只抓「今天之后」的公告，按发布时间升序生成草稿，按 `announcement:<source>:<id>` 去重。
+- 日服、国际服经 AI 翻译为简体中文；国服直接转换。
+- GameKee 草稿固定 `type=2`（公告），`tag=2/3/4`（更新/活动/情报），标题带 `【日服】`/`【国际服】`/`【国服】` 前缀。
+- 官方公告默认自动通过；`autoPublish` 开启时自动排队发布。
+- 国际服必须配置公告代理；日服/国服直连，代理故障时自动回退直连。
+- 图片上传自动适配腾讯 COS（`cdnimg-v2`）与旧华为 OBS（`cdnimg02`）；GameKee CDN 需要 Referer 防盗链。
+
+WebUI「公告」页可查看三个源的状态、上次错误、立即同步与最近草稿；「设置 → 公告」维护代理、翻译提示词、自动通过和单轮上限。详见 [`docs/announcements.md`](docs/announcements.md)。
+
 ## 快速开始
 
 要求：Node.js >= 20。

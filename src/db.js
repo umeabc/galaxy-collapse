@@ -2,13 +2,23 @@ import Database from 'better-sqlite3';
 import { mkdirSync } from 'node:fs';
 import { dirname } from 'node:path';
 
-const SCHEMA_VERSION = 2;
+const SCHEMA_VERSION = 3;
 
 const SCHEMA = `
 CREATE TABLE IF NOT EXISTS settings (
   key TEXT PRIMARY KEY,
   value_json TEXT NOT NULL,
   updated_at INTEGER NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS announcement_sources (
+  key TEXT PRIMARY KEY,
+  label TEXT NOT NULL,
+  url TEXT NOT NULL,
+  enabled INTEGER NOT NULL DEFAULT 1,
+  last_sync_at INTEGER,
+  last_error TEXT,
+  last_count INTEGER NOT NULL DEFAULT 0
 );
 
 CREATE TABLE IF NOT EXISTS subscriptions (
@@ -106,6 +116,10 @@ CREATE TABLE IF NOT EXISTS logs (
 
 CREATE INDEX IF NOT EXISTS idx_posts_status ON posts(status);
 CREATE INDEX IF NOT EXISTS idx_subscriptions_enabled ON subscriptions(enabled);
+INSERT OR IGNORE INTO announcement_sources(key,label,url,enabled) VALUES
+  ('jp','日服','https://bluearchive.jp/news/newsJump',1),
+  ('global','国际服','https://forum.nexon.com/bluearchiveTW/board_list?board=3352',1),
+  ('cn','国服','https://bluearchive-cn.com',1);
 CREATE INDEX IF NOT EXISTS idx_drafts_status ON drafts(status);
 CREATE INDEX IF NOT EXISTS idx_queue_state_due ON queue(state, next_attempt_at);
 CREATE INDEX IF NOT EXISTS idx_queue_draft ON queue(draft_id);

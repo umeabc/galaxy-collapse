@@ -79,11 +79,19 @@ async function api(path, { method = 'GET', body } = {}) {
   return data;
 }
 
-function toast(message, kind = '') {
+function toast(message, kind = '', url = '') {
   const wrap = $('#toasts');
   const node = document.createElement('div');
   node.className = `toast ${kind}`;
   node.textContent = message;
+  if (/^https:\/\/www\.gamekee\.com\//.test(url)) {
+    const link = document.createElement('a');
+    link.href = url;
+    link.target = '_blank';
+    link.rel = 'noopener';
+    link.textContent = ' 打开发布页';
+    node.appendChild(link);
+  }
   wrap.appendChild(node);
   setTimeout(() => {
     node.style.opacity = '0';
@@ -112,7 +120,7 @@ function setBusy(busy) {
 
 function currentRoute() {
   const raw = location.hash.replace(/^#\/?/, '');
-  return ['queue', 'drafts', 'logs', 'manual', 'settings'].includes(raw) ? raw : 'queue';
+  return ['queue', 'drafts', 'announcements', 'logs', 'manual', 'settings'].includes(raw) ? raw : 'queue';
 }
 
 function renderNav() {
@@ -125,6 +133,7 @@ function renderNav() {
     logs: '日志',
     manual: '手工加入',
     settings: '设置',
+    announcements: '公告',
   };
   $('#crumb').textContent = routeLabels[state.route] || routeLabels.queue;
 }
@@ -142,6 +151,9 @@ async function loadRoute(quiet = false) {
     } else if (state.route === 'logs') {
       await loadLogs();
       renderLogs();
+    } else if (state.route === 'announcements') {
+      await loadState();
+      await renderAnnouncements();
     } else if (state.route === 'settings') {
       await Promise.all([loadState(), loadSettings(), loadSubscriptions()]);
       renderSettings();
@@ -496,6 +508,20 @@ function field({ key, label, type = 'text', help = '', placeholder = '', value, 
   return `<div class="field"><label for="${id}">${esc(label)}</label>${control}${help ? `<span class="help">${esc(help)}</span>` : ''}</div>`;
 }
 
+async function renderAnnouncements() {
+  const data = await api('/api/announcements');
+  $('#view').innerHTML = `<div class="page-head"><div><h1>公告</h1><p>按设置时区同步今天及以后的官方公告，日服与国际服使用 AI 翻译。</p></div>
+    <div class="toolbar"><button class="btn primary" data-action="announcement-sync-all">同步全部公告源</button></div></div>
+    <div class="grid">${data.sources.map(source => `<div class="card"><header><h2>${esc(source.label)}</h2>${badge(source.enabled ? '已启用' : '已暂停')}</header><div class="body">
+      <p>上次同步：${esc(fmtTime(source.lastSyncAt))}</p><p class="muted">${esc(source.lastError || '无错误')}</p>
+      <button class="btn" data-action="announcement-toggle" data-key="${esc(source.key)}" data-enabled="${!source.enabled}">${source.enabled ? '暂停' : '启用'}</button>
+      <button class="btn primary" data-action="announcement-sync" data-key="${esc(source.key)}" ${source.enabled ? '' : 'disabled'}>立即同步</button>
+    </div></div>`).join('')}</div>
+    <div class="card"><header><h2>最近公告草稿</h2></header><div class="table-wrap"><table><thead><tr><th>标题</th><th>源</th><th>状态</th><th>创建时间</th><th>操作</th></tr></thead><tbody>
+    ${data.recent.map(d => `<tr><td>${esc(d.title)}</td><td>${esc(d.source_author)}</td><td>${statusBadge(d.status)}</td><td>${esc(fmtTime(d.created_at))}</td><td><button class="btn sm" data-action="draft-edit" data-id="${d.id}">编辑/预览</button>${d.publicationUrl ? `<a class="btn sm" href="${esc(d.publicationUrl)}" target="_blank" rel="noopener">打开发布页</a>` : ''}</td></tr>`).join('') || '<tr><td colspan="5" class="muted">暂无公告草稿</td></tr>'}
+    </tbody></table></div></div>`;
+}
+
 function renderSettings() {
   const v = state.settings;
   const subs = state.subscriptions || [];
@@ -638,6 +664,14 @@ function renderSettings() {
         </div>
       </div>
 
+      <div class="card"><header><h2>公告</h2><button class="btn" type="button" data-action="test-target" data-target="proxy">测试代理</button></header><div class="body"><div class="grid">
+        ${field({ key: 'announcementProxy', label: '公告代理', value: v.announcementProxy, help: 'HTTP(S) 代理；国际服必填，保存后测试' })}
+        ${field({ key: 'announcementSyncIntervalSeconds', label: '同步间隔（秒）', type: 'number', value: v.announcementSyncIntervalSeconds, min: 60, max: 86400 })}
+        ${field({ key: 'announcementTranslate', label: 'AI 翻译（日服/国际服必需）', type: 'checkbox', value: v.announcementTranslate })}
+        ${field({ key: 'announcementAutoApprove', label: '官方公告自动通过', type: 'checkbox', value: v.announcementAutoApprove })}
+        ${field({ key: 'announcementMaxItemsPerRun', label: '每源单轮上限', type: 'number', value: v.announcementMaxItemsPerRun, min: 1, max: 50 })}
+        ${field({ key: 'announcementTranslatePrompt', label: '翻译提示词', type: 'textarea', value: v.announcementTranslatePrompt, help: '{{source}} {{title}} {{markdown}}' })}
+      </div></div></div>
       <div class="settings-actions">
         <span class="muted">保存后立即生效，无需重启</span>
         <button class="btn primary" type="submit">保存设置</button>
@@ -747,6 +781,7 @@ async function afterDraftChange() {
   renderStatusChips();
   if (state.route === 'drafts') renderDrafts();
   if (state.route === 'queue') renderQueue();
+  if (state.route === 'announcements') await renderAnnouncements();
   if (!$('#modal').classList.contains('hidden')) await refreshEditor();
 }
 
@@ -756,6 +791,32 @@ async function handleAction(button) {
   const action = button.dataset.action;
   const id = Number(button.dataset.id);
   switch (action) {
+    case 'announcement-toggle':
+      await api(`/api/announcements/sources/${button.dataset.key}`, { method: 'PATCH', body: { enabled: button.dataset.enabled === 'true' } });
+      await renderAnnouncements();
+      return;
+    case 'announcement-sync-all': {
+      setBusy(true);
+      toast('正在同步全部公告源，请稍候…');
+      try {
+        const result = await api('/api/announcements/sync', { method: 'POST', body: {} });
+        if (result.skipped) toast('已有公告同步任务在运行', '');
+        else toast(`公告同步完成：新草稿 ${result.created.length}，失败 ${result.errors.length}`, result.errors.length ? 'error' : 'ok');
+      } finally {
+        setBusy(false);
+      }
+      await renderAnnouncements();
+      return;
+    }
+    case 'announcement-sync': {
+      button.disabled = true;
+      try {
+        const result = await api('/api/announcements/sync', { method: 'POST', body: { source: button.dataset.key } });
+        toast(`新增 ${result.created.length} 条，失败 ${result.errors.length} 条`, result.errors.length ? 'error' : 'ok');
+        await renderAnnouncements();
+      } finally { button.disabled = false; }
+      return;
+    }
     case 'toggle-theme': {
       const theme = document.documentElement.dataset.theme === 'light' ? 'dark' : 'light';
       document.documentElement.dataset.theme = theme;
@@ -793,8 +854,8 @@ async function handleAction(button) {
     case 'queue-publish': {
       setBusy(true);
       try {
-        await api(`/api/queue/${id}/publish`, { method: 'POST', body: { force: true } });
-        toast('发布成功', 'ok');
+        const result = await api(`/api/queue/${id}/publish`, { method: 'POST', body: { force: true } });
+        toast('发布成功', 'ok', result.result?.url);
       } finally {
         setBusy(false);
       }
@@ -845,7 +906,7 @@ async function handleAction(button) {
       setBusy(true);
       try {
         const result = await api(`/api/drafts/${id}/publish`, { method: 'POST', body: { force: true } });
-        toast(`发布成功${result.result?.contentId ? `：#${result.result.contentId}` : ''}`, 'ok');
+        toast(`发布成功${result.result?.contentId ? `：#${result.result.contentId}` : ''}`, 'ok', result.result?.url);
       } finally {
         setBusy(false);
       }
@@ -917,7 +978,7 @@ async function handleAction(button) {
       try {
         await saveEditor();
         const result = await api(`/api/drafts/${state.editing.draft.id}/publish`, { method: 'POST', body: { force: true } });
-        toast(`发布成功${result.result?.contentId ? `：#${result.result.contentId}` : ''}`, 'ok');
+        toast(`发布成功${result.result?.contentId ? `：#${result.result.contentId}` : ''}`, 'ok', result.result?.url);
         closeModal();
         await afterDraftChange();
       } finally {

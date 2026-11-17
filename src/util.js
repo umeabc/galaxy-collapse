@@ -126,3 +126,13 @@ export class AppError extends Error {
     this.details = details;
   }
 }
+
+/** 以配置时区判断某个时间戳是否属于「今天或之后」。 */
+export function dateKeyOf(timestamp, timeZone) {
+  return zonedParts(new Date(Number(timestamp) || 0), timeZone).dateKey;
+}
+
+export function isTodayOrLater(timestamp, timeZone, now = Date.now()) {
+  if (!timestamp) return false;
+  return dateKeyOf(timestamp, timeZone) >= zonedParts(new Date(now), timeZone).dateKey;
+}

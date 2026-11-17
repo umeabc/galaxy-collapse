@@ -1,5 +1,7 @@
 import { AppError, isHHMM, maskSecret } from '../util.js';
+import { isValidProxy } from '../net/proxy.js';
 import { DEFAULT_PROMPT } from '../review/ai.js';
+import { DEFAULT_TRANSLATE_PROMPT } from '../announcements/translate.js';
 
 const COOKIE_PATH = /^[^\0]{0,500}$/;
 const MODES = ['dynamic', 'article'];
@@ -49,6 +51,13 @@ export const SETTING_SPEC = {
   aiPrompt: { type: 'string', max: 20000 },
   aiMinConfidence: { type: 'float', min: 0, max: 1 },
   aiOnError: { type: 'enum', values: AI_ERROR_ACTIONS },
+  // 公告
+  announcementProxy: { type: 'string', max: 500 },
+  announcementSyncIntervalSeconds: int(60, 86400),
+  announcementTranslate: bool,
+  announcementAutoApprove: bool,
+  announcementMaxItemsPerRun: int(1, 50),
+  announcementTranslatePrompt: { type: 'string', max: 20000 },
 };
 
 export const SECRET_KEYS = Object.entries(SETTING_SPEC)
@@ -93,6 +102,12 @@ export function defaultSettings(config) {
     aiPrompt: DEFAULT_PROMPT,
     aiMinConfidence: config.ai.minConfidence,
     aiOnError: 'review',
+    announcementProxy: config.announcementProxy || '',
+    announcementSyncIntervalSeconds: 900,
+    announcementTranslate: true,
+    announcementAutoApprove: true,
+    announcementMaxItemsPerRun: 10,
+    announcementTranslatePrompt: DEFAULT_TRANSLATE_PROMPT,
   };
 }
 
@@ -138,6 +153,7 @@ export function coerceSetting(key, value, spec) {
       const text = value === null || value === undefined ? '' : String(value);
       if (spec.max && text.length > spec.max) throw new AppError(`设置 ${key} 过长`, { code: 'INVALID_SETTING' });
       if (spec.pattern && !spec.pattern.test(text)) throw new AppError(spec.message || `设置 ${key} 格式不正确`, { code: 'INVALID_SETTING' });
+      if (key === 'announcementProxy' && !isValidProxy(text)) throw new AppError('公告代理必须是 HTTP(S) URL', { code: 'INVALID_SETTING' });
       if (key === 'timeZone' && text && !validateTimeZone(text)) throw new AppError('timeZone 不是合法时区', { code: 'INVALID_SETTING' });
       return text;
     }

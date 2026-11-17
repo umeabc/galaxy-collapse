@@ -93,14 +93,14 @@ test('发布：图片下载 → OBS → content_json/thumb/image_list → 记录
   assert.equal(payload.editor_type, 1);
   assert.equal(payload.content, '');
   assert.ok(payload.summary.includes('第一段'));
-  assert.ok(payload.thumb.startsWith('//cdnimg-v2.gamekee.com/'));
+  assert.ok(payload.thumb.startsWith('//cdnimg02.gamekee.com/'));
   assert.equal(payload.image_list.length, 1);
-  assert.ok(payload.image_list[0].startsWith('//cdnimg-v2.gamekee.com/'));
+  assert.ok(payload.image_list[0].startsWith('//cdnimg02.gamekee.com/'));
 
   const nodes = JSON.parse(payload.content_json);
   assert.ok(nodes.some(node => node.type === 'header2'));
   const image = nodes.flatMap(node => node.children ?? []).find(child => child.type === 'image');
-  assert.ok(image.src.startsWith('//cdnimg-v2.gamekee.com/'));
+  assert.ok(image.src.startsWith('//cdnimg02.gamekee.com/'));
   assert.equal(image.style.width, '1200px');
   assert.equal(image.style.height, '800px');
 

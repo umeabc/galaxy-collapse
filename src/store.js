@@ -3,6 +3,49 @@
 export function createStore(db) {
   const now = () => Date.now();
 
+  // ---------------------------------------------------------------- announcement sources
+
+  function listAnnouncementSources() {
+    return db.prepare("SELECT * FROM announcement_sources ORDER BY CASE key WHEN 'jp' THEN 0 WHEN 'global' THEN 1 WHEN 'cn' THEN 2 ELSE 9 END")
+      .all()
+      .map(row => ({ ...row, enabled: Boolean(row.enabled), lastSyncAt: row.last_sync_at, lastError: row.last_error, lastCount: row.last_count }));
+  }
+
+  function getAnnouncementSource(key) {
+    const row = db.prepare('SELECT * FROM announcement_sources WHERE key = ?').get(String(key));
+    return row ? { ...row, enabled: Boolean(row.enabled), lastSyncAt: row.last_sync_at, lastError: row.last_error, lastCount: row.last_count } : null;
+  }
+
+  function updateAnnouncementSource(key, patch = {}) {
+    const current = getAnnouncementSource(key);
+    if (!current) return null;
+    db.prepare(`UPDATE announcement_sources SET enabled=@enabled, last_sync_at=@lastSyncAt,
+      last_error=@lastError, last_count=@lastCount WHERE key=@key`).run({
+      key: String(key),
+      enabled: patch.enabled === undefined ? (current.enabled ? 1 : 0) : (patch.enabled ? 1 : 0),
+      lastSyncAt: patch.lastSyncAt === undefined ? current.last_sync_at : patch.lastSyncAt,
+      lastError: patch.lastError === undefined ? current.last_error : patch.lastError,
+      lastCount: patch.lastCount === undefined ? current.last_count : patch.lastCount,
+    });
+    return getAnnouncementSource(key);
+  }
+
+  function listAnnouncementDrafts({ limit = 50 } = {}) {
+    return db.prepare(`SELECT d.*, p.source_key, p.kind AS post_kind, p.url AS source_url,
+        p.author AS source_author, p.published_at, p.blocks_json,
+        pb.url AS publication_url, pb.content_id AS publication_content_id
+      FROM drafts d
+      JOIN posts p ON p.id = d.post_id
+      LEFT JOIN publications pb ON pb.draft_id = d.id
+      WHERE p.kind = 'announcement'
+      ORDER BY d.id DESC LIMIT ?`).all(Math.min(200, Math.max(1, limit))).map(row => ({
+      ...hydrateDraft(row),
+      publicationUrl: row.publication_url,
+      publicationContentId: row.publication_content_id,
+      publishedAt: row.published_at,
+    }));
+  }
+
   // ---------------------------------------------------------------- subscriptions
 
   function hydrateSubscription(row) {
@@ -353,6 +396,10 @@ export function createStore(db) {
 
   return {
     db,
+    listAnnouncementSources,
+    getAnnouncementSource,
+    updateAnnouncementSource,
+    listAnnouncementDrafts,
     listSubscriptions,
     getSubscription,
     findSubscription,
