@@ -75,7 +75,7 @@ POST /api/publications/:publicationId/update
 - 日服、国际服经 AI 翻译为简体中文；国服直接转换。
 - GameKee 草稿固定 `type=2`（公告），`tag=2/3/4`（更新/活动/情报），标题带 `【日服】`/`【国际服】`/`【国服】` 前缀。
 - 官方公告默认自动通过；`autoPublish` 开启时自动排队发布。
-- **定时抓取**：默认开启，按 `announcementSyncIntervalSeconds`（默认 900 秒）自动轮询三个源；公告页显示下次抓取时间，可在设置中关闭。
+- **定时抓取**：默认开启，按 `announcementSyncIntervalSeconds`（默认 3600 秒 / 1 小时）自动轮询三个源；公告页显示下次抓取时间，可在设置中关闭。
 - 国际服必须配置公告代理；日服/国服直连，代理故障时自动回退直连。
 - 图片上传自动适配腾讯 COS（`cdnimg-v2`）与旧华为 OBS（`cdnimg02`）；GameKee CDN 需要 Referer 防盗链。
 

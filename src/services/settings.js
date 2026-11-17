@@ -105,7 +105,7 @@ export function defaultSettings(config) {
     aiOnError: 'review',
     announcementProxy: config.announcementProxy || '',
     announcementAutoSync: true,
-    announcementSyncIntervalSeconds: 900,
+    announcementSyncIntervalSeconds: 3600,
     announcementTranslate: true,
     announcementAutoApprove: true,
     announcementMaxItemsPerRun: 10,

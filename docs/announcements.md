@@ -35,7 +35,7 @@
 
 - `announcementProxy`：公告抓取代理（国际服必需）。
 - `announcementAutoSync`：定时抓取开关（默认开启）。
-- `announcementSyncIntervalSeconds`：调度间隔（默认 900 秒）；公告页显示每个源的下次抓取时间。
+- `announcementSyncIntervalSeconds`：调度间隔（默认 3600 秒 / 1 小时）；公告页显示每个源的下次抓取时间。
 - `announcementTranslate`：日服/国际服 AI 翻译开关。
 - `announcementAutoApprove`：官方公告自动通过。
 - `announcementMaxItemsPerRun`：单轮每源上限。
