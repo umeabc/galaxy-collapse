@@ -61,9 +61,9 @@ test('公告源：日服今天边界、未来日期和分类，正文直接取�
   assert.equal(result[0].html, '<p>正文</p>');
 });
 
-test('公告源：国服仅新闻 type=1，关键词优先级和昨天过滤', async () => {
+test('公告源：国服仅新闻 type=2，关键词优先级和昨天过滤', async () => {
   const result = await fetchCnAnnouncements({ ...options, fetchImpl: async url => {
-    assert.match(url, /type=1$/);
+    assert.match(url, /type=2$/);
     return json({ data: { rows: ['维护活动', '招募', '情报', '昨天'].map((title, id) => ({ id, title, content: '正文', publishTime: today + (id === 3 ? -1 : 0) })) } });
   } });
   assert.deepEqual(result.map(x => x.tag), [2, 3, 4]);

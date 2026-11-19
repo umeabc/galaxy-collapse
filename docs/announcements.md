@@ -8,7 +8,7 @@
 |---|---|---|---|
 | 日服 | `https://api-web.bluearchive.jp/api/news/list?typeId=0&pageNum=50&pageIndex=1` | 列表已含 `content` HTML | メンテ→2 更新；イベント→3 活动；お知らせ→4 情报 |
 | 国际服 | `https://forum.nexon.com/api/v1/board/3352/threads?...` | `/api/v1/thread/{id}?alias=bluearchivetw` | 固定 2 更新 |
-| 国服 | `https://bluearchive-cn.com/api/news/list?pageIndex=1&pageNum=50&type=1` | 列表已含 `content` HTML | 标题关键词：维护/更新→2；活动/招募→3；其他→4 |
+| 国服 | `https://bluearchive-cn.com/api/news/list?pageIndex=1&pageNum=50&type=2` | 列表已含 `content` HTML | 标题关键词：维护/更新→2；活动/招募→3；其他→4 |
 
 - 国际服必须走代理（直连 403）；日服/国服可直连。
 - 抓取范围：按设置时区（默认 `Asia/Shanghai`）只处理 `dateKey(publishTime) >= 今天` 的公告。

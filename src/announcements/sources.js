@@ -88,7 +88,7 @@ export async function fetchJpAnnouncements({ proxy = '', fetchImpl, timeZone = '
 export async function fetchCnAnnouncements({ proxy = '', fetchImpl, timeZone = 'Asia/Shanghai', todayKey = dateKeyOf(Date.now(), timeZone), maxPages = 3 } = {}) {
   const items = [];
   for (let page = 1; page <= maxPages; page += 1) {
-    const payload = await getJson(`https://bluearchive-cn.com/api/news/list?pageIndex=${page}&pageNum=50&type=1`, { proxy, fetchImpl });
+    const payload = await getJson(`https://bluearchive-cn.com/api/news/list?pageIndex=${page}&pageNum=50&type=2`, { proxy, fetchImpl });
     const rows = payload?.data?.rows ?? [];
     if (!rows.length) break;
     for (const row of rows) {
